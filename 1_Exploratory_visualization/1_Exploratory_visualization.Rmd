@@ -42,12 +42,30 @@ print(is)
 }
 ```
 
-## Including Plots
+## Visualize environmental covariate data
 
 You can also embed plots, for example:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r , echo=FALSE}
+core_sites <- c("KONZ","ORNL","SCBI","TALL")
+
+env_vars <- c("RHMin_precent","RHMax_precent","airTempMin_degC","airTempMax_degC")
+
+for (i in 1:length(core_sites)){
+  current_site <- subset(ticks, siteID == core_sites[i])
+  
+  for(j in 1:length(env_vars)){
+  
+plot_var <- ggplot(data = current_site, aes_string(x = "epiWeek", y = env_vars[j], color = 'plotID', fill = 'plotID'))+
+  geom_point(size = 2)+
+  geom_line()+
+  ggtitle(env_vars[j])+
+  facet_grid(vars(Year), scales = "free_x")+
+  theme_bw()
+print(plot_var)
+
+}
+}
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
