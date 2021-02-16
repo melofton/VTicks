@@ -1,0 +1,52 @@
+---
+title: "1_Exploratory_visualization"
+author: "Mary Lofton"
+date: "2/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = 'C:/Users/Mary Lofton/Documents/RProjects/VTicks')
+#install.packages('pacman')
+pacman::p_load(tidyverse, lubridate)
+```
+
+## Visualize tick data
+
+
+```{r}
+ticks <- read_csv("./0_Data_files/ticks-targets.csv.gz")
+
+sites <- unique(ticks$siteID)
+
+for (i in 1:length(sites)){
+  current_site <- subset(ticks, siteID == sites[i])
+  
+aa <- ggplot(data = current_site, aes(x = time, y = ambloyomma_americanum, color = plotID, fill = plotID))+
+  geom_point(size = 2)+
+  geom_line()+
+  ggtitle("A. americanum")+
+  facet_grid(vars(year))+
+  theme_classic()
+print(aa)
+
+is <- ggplot(data = current_site, aes(x = time, y = ixodes_scapularis, color = plotID, fill = plotID))+
+  geom_point(size = 2)+
+  geom_line()+
+  ggtitle("I. scapularis")+
+  theme_classic()
+print(is)
+
+}
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
