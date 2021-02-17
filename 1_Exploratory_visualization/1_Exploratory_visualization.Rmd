@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = 'C:/Users/Mary Lofton/Documents/RProjects/VTicks')
+#knitr::opts_knit$set(root.dir = 'C:/Users/Mary Lofton/Documents/RProjects/VTicks') (switching this so it can more easily used on different computers. Not needed)
 #install.packages('pacman')
 pacman::p_load(tidyverse, lubridate)
 ```
@@ -16,7 +16,7 @@ pacman::p_load(tidyverse, lubridate)
 
 
 ```{r, echo = FALSE}
-ticks <- read_csv("./0_Data_files/ticks-targets.csv.gz")
+ticks <- read_csv("../0_Data_files/ticks-targets.csv.gz")
 
 sites <- unique(ticks$siteID)
 

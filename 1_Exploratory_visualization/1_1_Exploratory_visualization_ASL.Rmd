@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-ticks_raw <- read_csv("../0_Data_files/ticks-targets.csv.gz")
+ticks <- read_csv("../0_Data_files/ticks-targets.csv.gz")
 
 sites <- unique(ticks$siteID)
 #ticks = ticks_raw%>%
@@ -35,9 +35,30 @@ for (i in 1:length(sites)){
     theme_classic()
   print(is)
 }
-```
 
-```{r}
+
+#-- to add to Mary's file
+sum = ticks%>%
+  mutate(month = month(as.Date(time)))%>%
+  group_by(plotID,Year,month)%>%
+  summarize(A = sum(!is.na(ambloyomma_americanum))/n(),
+            I = sum(!is.na(ambloyomma_americanum))/n())%>%
+  mutate(date = as.Date(paste0(Year,"-",month,"-01")))
+
+sum%>%
+  ggplot(aes(x = date, y = plotID, fill = A*100))+
+  geom_tile()+
+  scale_fill_viridis_c(na.value = "black")+
+  labs(fill = "Percent of Ambloyomma \namericanum data that is \nnot missing")+
+  theme_classic()
+
+sum%>%
+  ggplot(aes(x = date, y = plotID, fill = A*100))+
+  geom_tile()+
+  scale_fill_viridis_c(na.value = "black")+
+  labs(fill = "Percent of Ixodes \nscapularis data that \nis not missing")+
+  theme_classic()
+
 map = ticks%>%
   group_by(siteID)%>%
   summarize(lat = unique(decimalLatitude),
@@ -50,7 +71,7 @@ ggplot() +
   geom_map(data = MapData, map = MapData,
                   aes(map_id=region),
                   fill = "white", colour = "#7f7f7f", size=0.5)+
-  geom_point(aes(x = long, y = lat, color = siteID),data = map)+
+  geom_point(aes(x = long, y = lat, color = siteID),size = 3, data = map)+
   theme_bw() + xlab(NULL) + ylab(NULL) +
   theme(
     plot.background = element_blank(),
@@ -90,6 +111,4 @@ for (i in 1:length(sites)){
     theme_classic()
   print(is)
 }
-
-summary(as.factor(ticks$siteID))
 ```
