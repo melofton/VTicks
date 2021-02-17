@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-#knitr::opts_knit$set(root.dir = 'C:/Users/Mary Lofton/Documents/RProjects/VTicks') (switching this so it can more easily used on different computers. Not needed)
+#knitr::opts_knit$set(root.dir = 'C:/Users/Mary Lofton/Documents/RProjects/VTicks') (I changed the code below so this is not necessary and can be run on everyone's computer without changing)
 #install.packages('pacman')
 pacman::p_load(tidyverse, lubridate)
 ```
@@ -40,7 +40,7 @@ print(is)
 }
 ```
 
-###Visualize what tick data is present/missing
+### Visualize what tick data is present/missing
 ```{r, echo = FALSE, message = FALSE, warning = FALSE}
 sum = ticks%>%
   mutate(month = month(as.Date(time)))%>%
@@ -69,7 +69,7 @@ map = ticks%>%
             long = unique(decimalLongitude))
 ```
 
-###Visualize site locations
+### Visualize site locations
 ```{r}
 MapData <- map_data("state")%>%
   fortify()
@@ -90,6 +90,48 @@ ggplot() +
     axis.text.y = element_blank())+
   guides(fill = F)
 ```
+
+## Simulation of potential models for use in forecasting
+
+Sine-based dynamic model
+```{r}
+#timestep: weekly
+#spatial scale: one plot
+#focal variable: tick nymphs
+
+# Parameters
+n0 <- 0                                                     ## initial population size
+NT <- 54                                                    ## number of time steps to simulate (one year)
+time <- 1:NT                                                ## vector of times
+eggs_last_year = 1000                                       ## number of eggs laid last year (will ultimately be dependent 
+                                                            ## on number of adults last year and temperature)
+                                                            ## rate at which eggs become nymphs (will ultimately be dependent on temperature)
+eggs_to_nymphs = c(rep(0,13),sin(seq(0,pi, length.out = 12))/80,c(rep(0,28)))  # currently a sine function durring summer and zero otherwise
+                                                            ## rate at which nymphs become adults (will ultimately be dependent on temeprature)
+nymph_to_adult = c(rep(0,13),sin(seq(0,pi, length.out = 12))/50,c(rep(0,28))) 
+mortality = .25                                            ## mortality rate
+
+#Model
+tick_mod <- rep(n0, NT)    ## vector to store results
+for(t in 2:NT){
+  growth_nymph = eggs_last_year * eggs_to_nymphs[t-1]
+  growth_adult = tick_mod[t-1]*nymph_to_adult[t-1]
+  death = tick_mod[t-1]*mortality
+  tick_mod[t] = tick_mod[t - 1] + growth_nymph - death - growth_adult
+}
+
+#Plot results
+plot(time, tick_mod,lwd = 3, type = "l", bty = 'l', xlab = "Time", ylab = "Population Size")
+
+## this pattern is based on A. americanum 2016 data at KONZ
+plot(time, tick_mod,ylim = c(0,40),lwd = 3, type = "l", bty = 'l', xlab = "Time", ylab = "Population Size")
+dat = ticks%>%
+  filter(Year == 2016,
+         siteID == "KONZ")%>%
+  select(epiWeek,ambloyomma_americanum)
+points(dat$epiWeek,dat$ambloyomma_americanum)
+```
+
 
 ## Visualize environmental covariate data provided with target data
 Relative humidity is relevant because if conditions are too dry, tick eggs become dessicated.
