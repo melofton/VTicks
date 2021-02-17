@@ -1,6 +1,6 @@
 ---
 title: "1_Exploratory_visualization"
-author: "Mary Lofton"
+author: "Sarah Klinect, Abby Lewis, Mary Lofton (Team VTicks)"
 date: "2/16/2021"
 output: html_document
 ---
@@ -14,8 +14,7 @@ pacman::p_load(tidyverse, lubridate)
 
 ## Visualize tick data
 
-
-```{r, echo = FALSE}
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
 ticks <- read_csv("./0_Data_files/ticks-targets.csv.gz")
 
 sites <- unique(ticks$siteID)
@@ -42,11 +41,11 @@ print(is)
 }
 ```
 
-## Visualize environmental covariate data
+## Visualize environmental covariate data provided with target data
+Relative humidity is relevant because if conditions are too dry, tick eggs become dessicated.
+Temperature affects adult activity and therefore egg-laying rates.
 
-You can also embed plots, for example:
-
-```{r , echo=FALSE}
+```{r , echo=FALSE, message = FALSE, warning = FALSE}
 core_sites <- c("KONZ","ORNL","SCBI","TALL")
 
 env_vars <- c("RHMin_precent","RHMax_precent","airTempMin_degC","airTempMax_degC")
@@ -67,7 +66,17 @@ print(plot_var)
 }
 }
 
-#I made an edit
+unique(ticks$nlcdClass)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Plan for additional environmental covariate data
+Because many sites are missing environmental covariate data altogether or have gaps in data collection, we are planning to augment the provided relative humidity and air temperature covariate data using the North American Land Data Assimilation System Phase 2 (NLDAS-2) forcing dataset (https://ldas.gsfc.nasa.gov/nldas) and/or the Parameter-elevation Relationships on Independent Slopes Model (PRISM) model (http://www.prism.oregonstate.edu). NLDAS-2 can provide hourly-resolution climatic data, including relative humidity, temperature, and precipitation, at a 1/8 degree grid scale, and PRISM can provide daily temperature and precipitation at a 4-km resolution across all of our sites (to the best of our knowledge). We will use Pearson's correlations between NLDAS-2 and PRISM data and the already-provided local relative humidity and temperature data to determine which data product is more representative of local conditions across our study sites. We have (some) previous experience working with both the NLDAS-2 and PRISM data products.
+
+We are also interested in exploring precipitation as a possible covariate, following Klarenberg and Wisely (2019). We plan to use NEON precipitation data at the core sites where it is available (KONZ, ORNL, SCBI, TALL; NEON data product DP1.00006.001) and NLDAS-2 or PRISM data elsewhere.
+
+Finally, we are interested in exploring various vegetation indices as potential covariates, as vegetation structure can be important in facilitating tick bites and driving the wildlife host populations on which ticks depend. The target data provides NLCD land cover class; however, we think some measure of woody debris or vegetation structure might be important in determining tick abundance. It is unlikely that we will be able to generate forecasts for vegetation indices; however, we could potentially incorporate them as fixed effects that are continuous through time or generate very simple driver forecasts (e.g., random walk or climatology-based forecasts). We are considering the following NEON data products to incorporate vegetation structure: Woody plant vegetation structure (DP1.10098.001), Herbaceous clip harvest (DP1.10023.001), and Non-herbaceous perennial vegetation structure (DP1.10045.001).
+
+We acknowledge that certain wildlife populations (birds, mice, deer) are essential to tick life cycles and that tick abundance is highly intertwined with these populations; however, the difficulty of generating forecasts for these wildlife populations as driver variables may preclude their incorporation into our tick forecasting model.
+
+References:
+Klarenberg, G. & Wisely, S. M. Evaluation of NEON data to model spatio-temporal tick dynamics in Florida. Insects 10, (2019).
