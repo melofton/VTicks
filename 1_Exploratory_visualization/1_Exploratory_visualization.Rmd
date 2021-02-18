@@ -70,7 +70,7 @@ map = ticks%>%
 ```
 
 ### Visualize site locations
-```{r}
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
 MapData <- map_data("state")%>%
   fortify()
 
@@ -109,7 +109,7 @@ eggs_last_year = 1000                                       ## number of eggs la
 eggs_to_nymphs = c(rep(0,13),sin(seq(0,pi, length.out = 12))/80,c(rep(0,28)))  # currently a sine function durring summer and zero otherwise
                                                             ## rate at which nymphs become adults (will ultimately be dependent on temeprature)
 nymph_to_adult = c(rep(0,13),sin(seq(0,pi, length.out = 12))/50,c(rep(0,28))) 
-mortality = .25                                            ## mortality rate
+mortality = .25                                             ## mortality rate
 
 #Model
 tick_mod <- rep(n0, NT)    ## vector to store results
