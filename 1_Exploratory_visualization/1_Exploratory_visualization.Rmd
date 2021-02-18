@@ -1,6 +1,6 @@
 ---
 title: "1_Exploratory_visualization"
-author: "Sarah Klinect, Abby Lewis, Mary Lofton (Team VTicks)"
+author: "Sarah Kinz, Abby Lewis, Mary Lofton (Team VTicks)"
 date: "2/16/2021"
 output: html_document
 ---
