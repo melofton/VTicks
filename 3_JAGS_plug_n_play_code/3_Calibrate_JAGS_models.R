@@ -43,8 +43,6 @@ pacman::p_load(tidyverse, readxl, rjags, runjags, moments, coda,zoo)
 my_directory <- "C:/Users/Mary Lofton/Desktop/VTicks"
 write_plots <- TRUE
 
-#STOPPED ADAPTING HERE!!
-
 #make vector of model names for for-loop
 my_models <- c("ZIP")
 length(my_models)
@@ -60,13 +58,13 @@ for (i in 1:length(my_models)){
 
 #2) Model options => pick model -----------------------------------------------------
 
-model_name = my_models[i] # options are found in 4.1_JAGS_models
+model_name = my_models[i] # options are found in 2_JAGS_model_templates
 model=paste0("2_JAGS_model_templates/",model_name, '.R') #Do not edit
 
 
 #3) Read in data for model ------------------------------------------------------------------------------------------------------------
 
-#see 0_Function_library/model_calibration_get_data.R for this function
+#see 3 for this function
 cal_data <- get_calibration_data(model_name = model_name,
                                  site = "ORNL",
                                  plot = "ORNL_040",
