@@ -40,7 +40,8 @@ pacman::p_load(tidyverse, readxl, rjags, runjags, moments, coda,zoo)
 
 
 #set a directory to use as a local file repository for plots if desire to write to file
-my_directory <- "C:/Users/Mary Lofton/Desktop/VTicks"
+#my_directory <- "C:/Users/Mary Lofton/Desktop/VTicks"
+my_directory <- "~Desktop/EF 2021/VTicks"
 write_plots <- TRUE
 
 #make vector of model names for for-loop
