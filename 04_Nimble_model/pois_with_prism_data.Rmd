@@ -139,3 +139,26 @@ ggplot(d, aes(x = x)) +
   geom_point(aes(y = obs), color = "gray", alpha = 0.3) +
   labs(y = "Phenology DOY model")
 ```
+
+
+```{r}
+###Goals this week : find reliable priors and dynamic model to mess with in the nimble framework. You gotta represent a couple of different sites with different populations. Historically some of the sites have had zero count and some have had a far number. Try to figure out 
+
+
+unique(ticks$siteID)
+
+
+ticks%>% filter(siteID == "TALL") %>% ggplot(aes(x= epiWeek, y= ixodes_scapularis, color= plotID))+
+  geom_point()
+
+ticks%>% filter(siteID == "TALL") %>% ggplot(aes(x= epiWeek, y= ambloyomma_americanum, color= plotID))+
+  geom_point()
+
+ticks_drivers<- full_join(ticks, drivers, by= "plotID")
+
+
+ticks_drivers %>% filter(siteID == "TALL") %>% ggplot(aes(x=  ambloyomma_americanum, y= tmean..degrees.C., color= plotID))+
+  geom_point()
+
+```
+
