@@ -17,8 +17,8 @@ library(tidyverse)
 Very much a work in progress
 Made by ASL 16 Mar 2021
 
+Load and format PRISM driver data (this should be moved out of this script eventually!)
 ```{r}
-ticks <- read_csv("../0_Data_files/ticks-targets.csv.gz")
 files = list.files("../0_Data_files/PRISM_data")
 files = files[grepl("PRISM_ppt",files)]
 full_site = sub(".+_", "",sub(".csv","",files))
@@ -49,47 +49,69 @@ drivers$plotID <- paste0(drivers$Site,"_",drivers$Plot)
 write.csv(drivers, "../0_Data_files/PRISM_data/combined_prism_drivers.csv")
 ```
 
-
+First attempt at the nimble model for all sites. Currently sites are different groups in the hierarchical model. This takes a LONG time to run on my computer
 ```{r}
+ticks <- read_csv("../0_Data_files/ticks-targets.csv.gz")
+drivers <- read.csv("../0_Data_files/PRISM_data/combined_prism_drivers.csv")
+
+#NOTE: this does not include all data right now! Only days with driver data available
+data = drivers%>%
+  rename(time = Date,
+         siteID = Site)%>%
+  mutate(time = as.Date(time))%>%
+  left_join(ticks)
+
+group_index = as.numeric(factor(data$siteID)) #Set group index (currently by site)
 
 logistic <- nimbleCode({
 
   # Priors
-  theta1 ~ dnorm(0, sd = 10000)
+  theta1_global ~ dnorm(0, sd = 1000)
+  sd1_global ~ dnorm(0, sd = 1000)
+  sd_data ~ dnorm(0, sd = 1000)
+  
+  for(j in 1:n_groups){ #Currently the model is entirely dependent on temperature
+    p1[j] ~ dnorm(theta1_global, sd = sd1_global)
+  }
 
   #Loop through data points
   for(i in 1:n){
       # Process model
-      pred[i] <- theta1 * temp[i]
+      pred[i] <- p1[group[i]] * temp[i]
       # Data model
       y[i]  ~ dnorm(pred[i], sd = sd_data)
   }
 
 })
 
-constants <- list(n = length(bart_spring$doy))
+constants <- list(n = length(data$time),
+                  n_groups = length(unique(group_index)),
+                  group = group_index)
 
-data <- list(x = bart_spring$doy,
-             y = bart_spring$gcc_90)
+data <- list(temp = data$tmean..degrees.C.,
+             y = data$ixodes_scapularis) #y = data$ambloyomma_americanum
 
 nchain <- 3
 inits <- list()
 for(i in 1:nchain){
-  inits[[i]] <- list(theta1 = rnorm(1, 0.34, 0.05))
+  inits[[i]] <- list(theta1_global = rnorm(1, 1, 1),
+                     sd1_global = rnorm(1, 1, 1),
+                     sd_data = rnorm(1, 1, 1))
 }
 
 nimble.out <- nimbleMCMC(code = logistic,
                            data = data,
                            inits = inits,
                            constants = constants,
-                           monitors = c("theta1"),
+                           monitors = c("theta1_global", "sd1_global", "sd_data"),
                            niter = 10000,
                            nchains = 3,
                            samplesAsCodaMCMC = TRUE)
 
-plot(nimble.out) #
-gelman.diag(nimble.out)  ## determine convergence
+plot(nimble.out) #sd_data does not converge
+gelman.diag(nimble.out)  ## determine convergence. This is not running right now?
 
+#Haven't gotten to this point yet
 burnin <- 1000                               
 nimble.burn <- window(nimble.out, start=burnin)
 
@@ -100,47 +122,14 @@ gelman.diag(nimble.burn)  ## determine convergence
 chain <- nimble.burn %>%
   tidybayes::spread_draws(theta1, theta2, theta4, sd_data)
 
-pred_function <- function(x, theta1, theta2, theta3, theta4){
-  theta1 + theta2 * exp(theta3 + theta4 * x) / (1 + exp(theta3 + theta4 * x))
+pred_function <- function(p1, temp, group_i){
+  p1[group_i] * temp[i]
 }
-
-num_samples <- 1000
-x_new <- bart_spring$doy
-pred_posterior_mean <- matrix(NA, num_samples, length(x_new))   # storage for all simulations
-y_posterior <- matrix(NA, num_samples, length(x_new)) 
-
-for(i in 1:num_samples){
-  sample_index <- sample(x = 1:nrow(chain), size = 1, replace = TRUE)
-  pred_posterior_mean[i, ] <-pred_function(x_new, 
-                                           theta1 = chain$theta1[sample_index],
-                                           theta2 = chain$theta2[sample_index],
-                                           theta3 = -50,
-                                           theta4 = chain$theta4[sample_index])
-  y_posterior[i, ] <- rnorm(length(x_new), pred_posterior_mean[i, ], sd = chain$sd_data[sample_index])
-  
-}
-n.stats.y <- apply(y_posterior, 2, quantile, c(0.025, 0.5, 0.975))
-n.stats.y.mean <- apply(y_posterior, 2, mean)
-
-n.stats.mean <- apply(pred_posterior_mean, 2, quantile, c(0.025, 0.5, 0.975))
-
-d <- tibble(x = x_new,
-            median = n.stats.y.mean,
-            lower95_y = n.stats.y[1, ],
-            upper95_y = n.stats.y[3, ],
-            lower95_mean = n.stats.mean[1, ],
-            upper95_mean = n.stats.mean[3, ],
-            obs = bart_spring$gcc_90)
-
-ggplot(d, aes(x = x)) +
-  geom_ribbon(aes(ymin = lower95_y, ymax = upper95_y), fill = "lightblue", alpha = 0.5) +
-  geom_ribbon(aes(ymin = lower95_mean, ymax = upper95_mean), fill = "pink", alpha = 0.5) +
-  geom_line(aes(y = median)) +
-  geom_point(aes(y = obs), color = "gray", alpha = 0.3) +
-  labs(y = "Phenology DOY model")
 ```
 
 
+
+Added by Sarah 22 Mar 21:
 ```{r}
 ###Goals this week : find reliable priors and dynamic model to mess with in the nimble framework. You gotta represent a couple of different sites with different populations. Historically some of the sites have had zero count and some have had a far number. Try to figure out 
 
