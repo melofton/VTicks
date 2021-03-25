@@ -1,0 +1,171 @@
+---
+title: "Bayesian_NIMBLE_Assignment"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(nimble)
+library(rjags)
+library(lubridate)
+library(tidybayes)
+library(tidyverse)
+```
+Very much a work in progress
+Made by ASL 16 Mar 2021
+
+First attempt at the nimble model for all sites. Currently sites are different groups in the hierarchical model. This takes a LONG time to run on my computer
+
+MEL: Plots or sites? I had no luck getting a site effect to converge so am only doing plots. Which I think is what you were doing?? Ugh plots, sites, plots, sites, plites, sots...
+```{r}
+ticks <- read_csv("../0_Data_files/ticks-targets.csv.gz")
+drivers <- read.csv("../0_Data_files/PRISM_data/combined_prism_drivers.csv")
+
+#NOTE: this does not include all data right now! Only days with driver data available
+data = drivers%>%
+  rename(time = Date,
+         siteID = Site)%>%
+  mutate(time = as.Date(time))%>%
+  left_join(ticks)
+
+#KEY CHANGE: limiting to only timepoints when we have observations - since we are not currently using state-space anyway, no need to include NA observations at this time, and it facilitates convergence
+data1 <- data %>%
+  filter(year(time) %in% c(2016:2018)) %>%
+  mutate(NewEpiWeek = epiweek(time)) %>%
+  filter(NewEpiWeek %in% c(09:49)) %>%
+  mutate(NewEpiWeek = sprintf("%02d", NewEpiWeek),
+         Year = year(time)) %>%
+  gather(ambloyomma_americanum:ixodes_scapularis, key = "Species", value = "Count") %>%
+  select(-Plot) %>%
+  rename(Site = siteID,
+         Date = time,
+         Plot = plotID,
+         Temp_C = tmean..degrees.C.,
+         Precip_mm = ppt..mm.) %>%
+  select(Site, Year, Date, Plot, Count, Species, Temp_C, Precip_mm) %>%
+  filter(!is.na(Count)) %>%
+  arrange(Date)
+
+# Set up indices
+spp <- as.numeric(factor(data1$Species))
+yrs <- as.numeric(factor(data1$Year))
+sites <- as.numeric(factor(data1$Site))
+plots <- as.numeric(factor(data1$Plot))
+
+# Plot counts vs. temp and precip
+ggplot(data = data1, aes(x = Temp_C, y = log(Count), group = Species, color = Species))+
+  geom_point(size = 2)+
+  theme_classic()+
+  geom_smooth()
+
+ggplot(data = data1, aes(x = Precip_mm, y = log(Count), group = Species, color = Species))+
+  geom_point(size = 2)+
+  theme_classic()
+
+```
+
+```{r}
+tick_model <- nimbleCode({
+
+  # Priors
+  
+  #random effects (or fixed effects? I am not sure how you would code that up differently)
+  mu_plot ~ dnorm(0, 100)
+  mu_sp ~ dnorm(0, 100)
+  sd_plot ~ dgamma(0.01, 0.01)
+  sd_sp ~ dgamma(0.01, 0.01)
+  
+  for(l in 1:n_plots){
+    plot[l] ~ dnorm(mu_plot, sd = sd_plot)
+  }
+  
+  for(m in 1:n_spp){ 
+    sp[m] ~ dnorm(mu_sp, sd = sd_sp)
+  }
+
+  #Loop through data points
+  for(i in 1:n){
+    
+      # Process model
+      log(pred[i]) <- plot[plots[i]]*x[i] + sp[spp[i]]  
+      
+      # Data model
+      y[i]  ~ dpois(pred[i])
+  }
+
+})
+
+constants <- list(n = length(data1$Date),
+                  n_spp = length(unique(data1$Species)),
+                  n_plots = length(unique(data1$Plot)),
+                  spp = spp,
+                  plots = plots)
+
+data <- list(x = data1$Temp_C,
+             y = data1$Count )
+
+nchain <- 3
+inits <- list()
+for(i in 1:nchain){
+  inits[[i]] <- list(mu_plot = rnorm(1, 1, 1),
+                     mu_sp = rnorm(1, 1, 1),
+                     sd_sp = rgamma(1, 1, 1),
+                     sd_plot = rgamma(1, 1, 1))
+}
+
+model$initializeInfo()
+
+nimble.out <- nimbleMCMC(code = tick_model,
+                           data = data,
+                           inits = inits,
+                           constants = constants,
+                           monitors = c("sd_sp","sd_plot","mu_plot","mu_sp"),
+                           niter = 10000,
+                           nchains = 3,
+                           samplesAsCodaMCMC = TRUE)
+
+plot(nimble.out) #BOOM
+gelman.diag(nimble.out)  ## BOOM!! :-)
+
+#Haven't gotten to this point yet
+burnin <- 2000                               
+nimble.burn <- window(nimble.out, start=burnin)
+
+plot(nimble.burn) #
+effectiveSize(nimble.burn)
+gelman.diag(nimble.burn)  ## determine convergence
+
+
+##STOPPED ADAPTING HERE
+chain <- nimble.burn %>%
+  tidybayes::spread_draws(theta1, theta2, theta4, sd_data)
+
+pred_function <- function(p1, temp, group_i){
+  p1[group_i] * temp[i]
+}
+```
+
+
+
+Added by Sarah 22 Mar 21:
+```{r}
+###Goals this week : find reliable priors and dynamic model to mess with in the nimble framework. You gotta represent a couple of different sites with different populations. Historically some of the sites have had zero count and some have had a far number. Try to figure out 
+
+
+unique(ticks$siteID)
+
+
+ticks%>% filter(siteID == "TALL") %>% ggplot(aes(x= epiWeek, y= ixodes_scapularis, color= plotID))+
+  geom_point()
+
+ticks%>% filter(siteID == "TALL") %>% ggplot(aes(x= epiWeek, y= ambloyomma_americanum, color= plotID))+
+  geom_point()
+
+ticks_drivers<- full_join(ticks, drivers, by= "plotID")
+
+
+ticks_drivers %>% filter(siteID == "TALL") %>% ggplot(aes(x=  ambloyomma_americanum, y= tmean..degrees.C., color= plotID))+
+  geom_point()
+
+```
+
