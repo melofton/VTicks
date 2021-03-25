@@ -64,20 +64,31 @@ ggplot(data = data1, aes(x = Precip_mm, y = log(Count), group = Species, color =
 
 ```
 
+
+Run model and check convergence
 ```{r}
 tick_model <- nimbleCode({
 
   # Priors
   
+  #process error
+  sd_proc ~ dgamma(0.01, 0.01)
+  
   #random effects (or fixed effects? I am not sure how you would code that up differently)
   mu_plot ~ dnorm(0, 100)
   mu_sp ~ dnorm(0, 100)
+  #mu_site ~ dnorm(0, 100)
   sd_plot ~ dgamma(0.01, 0.01)
   sd_sp ~ dgamma(0.01, 0.01)
+  #sd_site ~ dgamma(0.01, 0.01)
   
   for(l in 1:n_plots){
     plot[l] ~ dnorm(mu_plot, sd = sd_plot)
   }
+  
+  #for(l in 1:n_sites){
+  #  site[l] ~ dnorm(mu_site, sd = sd_site)
+  #}
   
   for(m in 1:n_spp){ 
     sp[m] ~ dnorm(mu_sp, sd = sd_sp)
@@ -87,7 +98,8 @@ tick_model <- nimbleCode({
   for(i in 1:n){
     
       # Process model
-      log(pred[i]) <- plot[plots[i]]*x[i] + sp[spp[i]]  
+      log(mu[i]) <- plot[plots[i]]*x[i]  + sp[spp[i]]  #+ site[sites[i]]*x[i]
+      log(pred[i]) ~ dnorm(log(mu[i]), sd = sd_proc)
       
       # Data model
       y[i]  ~ dpois(pred[i])
@@ -98,7 +110,9 @@ tick_model <- nimbleCode({
 constants <- list(n = length(data1$Date),
                   n_spp = length(unique(data1$Species)),
                   n_plots = length(unique(data1$Plot)),
+                  #n_sites = length(unique(data1$Site)),
                   spp = spp,
+                  #sites = sites,
                   plots = plots)
 
 data <- list(x = data1$Temp_C,
@@ -109,39 +123,82 @@ inits <- list()
 for(i in 1:nchain){
   inits[[i]] <- list(mu_plot = rnorm(1, 1, 1),
                      mu_sp = rnorm(1, 1, 1),
+                     #mu_site = rnorm(1, 1, 1),
                      sd_sp = rgamma(1, 1, 1),
-                     sd_plot = rgamma(1, 1, 1))
+                     sd_plot = rgamma(1, 1, 1),
+                     #sd_site = rgamma(1, 1, 1),
+                     sd_proc = rgamma(1, 1, 1))
 }
 
-model$initializeInfo()
+#model$initializeInfo()
 
 nimble.out <- nimbleMCMC(code = tick_model,
                            data = data,
                            inits = inits,
                            constants = constants,
-                           monitors = c("sd_sp","sd_plot","mu_plot","mu_sp"),
+                           monitors = c("sd_sp","sd_plot","mu_plot","mu_sp","sd_proc", "pred"), #"sd_site", "mu_site"
                            niter = 10000,
                            nchains = 3,
                            samplesAsCodaMCMC = TRUE)
 
-plot(nimble.out) #BOOM
-gelman.diag(nimble.out)  ## BOOM!! :-)
+plot(nimble.out[, c("sd_sp","sd_plot","mu_plot","mu_sp","sd_proc")]) #BOOM
+gelman.diag(nimble.out[, c("sd_sp","sd_plot","mu_plot","mu_sp","sd_proc")])  ## BOOM!! :-)
 
-#Haven't gotten to this point yet
-burnin <- 2000                               
+burnin <- 1000                               
 nimble.burn <- window(nimble.out, start=burnin)
 
-plot(nimble.burn) #
-effectiveSize(nimble.burn)
-gelman.diag(nimble.burn)  ## determine convergence
+plot(nimble.burn[, c("sd_sp","sd_plot","mu_plot","mu_sp","sd_proc")]) #
+effectiveSize(nimble.burn[, c("sd_sp","sd_plot","mu_plot","mu_sp","sd_proc")])
+gelman.diag(nimble.burn[, c("sd_sp","sd_plot","mu_plot","mu_sp","sd_proc")])  ## determine convergence
+```
 
+Plot results
+```{r}
+data1$row <- as.numeric(row.names(data1))
 
-##STOPPED ADAPTING HERE
 chain <- nimble.burn %>%
-  tidybayes::spread_draws(theta1, theta2, theta4, sd_data)
+  tidybayes::spread_draws(pred[row])%>%
+  group_by(row) %>% 
+  summarise(mean = mean(pred),
+            upper = quantile(pred, 0.975),
+            lower = quantile(pred, 0.025),.groups = "drop")
 
-pred_function <- function(p1, temp, group_i){
-  p1[group_i] * temp[i]
+library(lubridate)
+to_plot = chain%>%
+  left_join(data1, by = "row")%>%
+  mutate(doy = yday(Date))
+
+sites <- unique(to_plot$Site)
+for (i in 1:length(sites)){
+  current_site <- subset(to_plot, Site == sites[i])
+  
+  aa <- current_site%>%
+    filter(Species == "ambloyomma_americanum")
+  if(nrow(aa) > 0){
+    aa = aa%>%
+      ggplot(aes(x = doy, color = Plot, fill = Plot))+
+      geom_point(aes(y = Count), size = 2)+
+      geom_line(aes(y = mean))+
+      geom_ribbon(aes(ymin = lower, ymax = upper, color = Plot, fill = Plot), alpha = 0.2) +
+      ggtitle("A. americanum")+
+      facet_grid(vars(Year), scales = "free_x")+
+      theme_bw()
+    print(aa)
+  }
+  
+  is <- current_site%>%
+    filter(Species == "ixodes_scapularis")
+  if(nrow(is)>0){
+    is = is%>%
+      ggplot(aes(x = doy, y = Count, color = Plot, fill = Plot))+
+      geom_point(aes(y = Count), size = 2)+
+      geom_line(aes(y = mean))+
+      geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+      ggtitle("I. scapularis")+
+      facet_grid(vars(Year), scales = "free_x")+
+      theme_bw()
+    print(is)
+  }
 }
 ```
 
