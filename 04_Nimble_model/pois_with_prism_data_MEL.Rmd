@@ -81,6 +81,9 @@ tick_model <- nimbleCode({
 
   # Priors
   
+  #process error
+  sd_proc ~ dgamma(0.01, 0.01)
+  
   #random effects (or fixed effects? I am not sure how you would code that up differently)
   mu_plot ~ dnorm(0, 100)
   mu_sp ~ dnorm(0, 100)
@@ -99,7 +102,8 @@ tick_model <- nimbleCode({
   for(i in 1:n){
     
       # Process model
-      log(pred[i]) <- plot[plots[i]]*x[i] + sp[spp[i]]  
+      log(mu[i]) <- plot[plots[i]]*x[i] + sp[spp[i]]  
+      log(pred[i]) ~ dnorm(log(mu[i]), sd = sd_proc)
       
       # Data model
       y[i]  ~ dpois(pred[i])
@@ -122,16 +126,17 @@ for(i in 1:nchain){
   inits[[i]] <- list(mu_plot = rnorm(1, 1, 1),
                      mu_sp = rnorm(1, 1, 1),
                      sd_sp = rgamma(1, 1, 1),
-                     sd_plot = rgamma(1, 1, 1))
+                     sd_plot = rgamma(1, 1, 1),
+                     sd_proc = rgamma(1, 1, 1))
 }
 
-model$initializeInfo()
+#model$initializeInfo()
 
 nimble.out <- nimbleMCMC(code = tick_model,
                            data = data,
                            inits = inits,
                            constants = constants,
-                           monitors = c("sd_sp","sd_plot","mu_plot","mu_sp"),
+                           monitors = c("sd_sp","sd_plot","mu_plot","mu_sp","sd_proc"),
                            niter = 10000,
                            nchains = 3,
                            samplesAsCodaMCMC = TRUE)
