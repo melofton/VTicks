@@ -1,0 +1,79 @@
+
+
+
+
+```{r}
+
+library(agricolae)
+library(tidybayes)
+library(tidyverse)
+
+ticks <- read_csv("../0_Data_files/ticks-targets.csv.gz")
+
+```
+
+
+Breaking down the data
+```{r}
+view(ticks)
+
+aa_ticks<- ticks%>% select(siteID, plotID, ambloyomma_americanum)
+
+is_ticks<- ticks%>% select(siteID, plotID, ixodes_scapularis)
+
+```
+
+ANOVA for aa_ticks
+```{r}
+aa_ticks<- aa_ticks %>% drop_na(ambloyomma_americanum)
+
+str(aa_ticks)
+
+aa_ticks$siteID<- factor(aa_ticks$siteID)
+
+str(aa_ticks)
+
+mod1.lm<-lm(ambloyomma_americanum ~ plotID + siteID, data= aa_ticks)
+
+mod1.av<-aov(mod1.lm)
+
+summary(mod1.av)
+
+tukey.test<-TukeyHSD(mod1.av)
+
+tukey.test
+
+plot(tukey.test)
+
+summary(tukey.test)
+
+```
+
+ANOVA for is_ticks data
+```{r}
+
+is_ticks<- is_ticks %>% drop_na(ixodes_scapularis)
+
+str(is_ticks)
+
+is_ticks$siteID<- factor(is_ticks$siteID)
+
+str(is_ticks)
+
+mod1.lm<-lm(ixodes_scapularis ~ plotID + siteID, data= is_ticks)
+
+mod1.av<-aov(mod1.lm)
+
+summary(mod1.av)
+
+tukey.test<-TukeyHSD(mod1.av)
+
+tukey.test
+
+plot(tukey.test)
+
+summary(tukey.test)
+
+
+```
+
