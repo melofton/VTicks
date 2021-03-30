@@ -11,31 +11,17 @@ library(lubridate)
 library(tidybayes)
 library(tidyverse)
 ```
-Very much a work in progress
-Made by ASL 16 Mar 2021
 
-First attempt at the nimble model for all sites. Currently sites are different groups in the hierarchical model. This takes a LONG time to run on my computer
-
-MEL: Plots or sites? I had no luck getting a site effect to converge so am only doing plots. Which I think is what you were doing?? Ugh plots, sites, plots, sites, plites, sots...
+## Read in and wrangle data
 ```{r}
 ticks <- read_csv("../0_Data_files/ticks-targets.csv.gz")
 drivers <- read.csv("../0_Data_files/PRISM_data/combined_prism_drivers.csv")
 
-#NOTE: this does not include all data right now! Only days with driver data available
 data = drivers%>%
   rename(time = Date,
          siteID = Site)%>%
   mutate(time = as.Date(time))%>%
   left_join(ticks)
-
-# group_index = as.numeric(factor(data$siteID)) #Set group index (currently by site)
-# 
-# check_aa <- data %>%
-#   filter(!is.na(ambloyomma_americanum))
-# check_is <- data %>%
-#   filter(!is.na(ixodes_scapularis))
-# range(check_aa$epiWeek, na.rm = TRUE)
-# range(check_is$epiWeek, na.rm = TRUE)
 
 #KEY CHANGE: limiting to only timepoints when we have observations - since we are not currently using state-space anyway, no need to include NA observations at this time, and it facilitates convergence
 data1 <- data %>%
@@ -52,48 +38,53 @@ data1 <- data %>%
          Temp_C = tmean..degrees.C.,
          Precip_mm = ppt..mm.) %>%
   select(Site, Year, Date, Plot, Count, Species, Temp_C, Precip_mm) %>%
-  filter(!is.na(Count)) %>%
-  arrange(Date)
+  filter(!is.na(Count) & Species == "ambloyomma_americanum") %>%
+  arrange(Plot)
 
-# head(data1)
-# hist(log(data1$Count))
+# Set up array for state-space model
+tick.plots <- unique(data1$Plot)
+nplots <- length(tick.plots)
+time_length <- rep(NA,nplots)
 
-# Set up indices
-spp <- as.numeric(factor(data1$Species))
-yrs <- as.numeric(factor(data1$Year))
-sites <- as.numeric(factor(data1$Site))
-plots <- as.numeric(factor(data1$Plot))
-
-# # Plot counts vs. temp and precip
-# ggplot(data = data1, aes(x = Temp_C, y = log(Count), group = Species, color = Species))+
-#   geom_point(size = 2)+
-#   theme_classic()+
-#   geom_smooth()
-# 
-# ggplot(data = data1, aes(x = Precip_mm, y = log(Count), group = Species, color = Species))+
-#   geom_point(size = 2)+
-#   theme_classic()
-
-```
-
-```{r}
-time_length <- rep(NA,nsites )
-
-time_length[1] <- 17 #number of available data points at each site
-time_length[2] <- 100
-
-y <- array(NA, dim = c(nsites, max(time_length)))
-
-y[ , 1]
-
-for(j in 1:nsites){
-  for(i in 2:time_length[j]){
-  
-    x[j, i] <- x[j, i- 1]
-    y[j, i] <- dnorm(x[j, i], sd = sigma)
-  }
+for (i in 1:length(tick.plots)){
+  plot.data <- subset(data1, Plot == tick.plots[i])
+  time_length[i] <- length(plot.data$Count)
 }
 
+y <- array(NA, dim = c(nplots, max(time_length)+1))
+x <- array(NA, dim = c(nplots, max(time_length)+1))
+
+for (i in 1:length(tick.plots)){
+  plot.data <- subset(data1, Plot == tick.plots[i])
+  y[i,c(2:(time_length[i]+1))] <- plot.data$Count
+  x[i,c(2:(time_length[i]+1))] <- plot.data$Temp_C
+}
+
+# Set up indices
+plots <- as.numeric(factor(unique(data1$Plot)))
+
+# # plots 2, 15, 17 have non-zero mean plot effect estimates
+# unique(data1$Plot)
+# # ORNL_002, TALL_002, UKFS_001
+# check <- data1 %>%
+#   group_by(Plot) %>%
+#   summarize(mean_count = mean(Count, na.rm = TRUE)) %>%
+#   arrange(mean_count)
+# # it is because they have the highest mean count
+```
+Summary of work so far:
+- model converges fine as random walk. sd_proc is large (1.7-1.8 in log space)  
+- cannot estimate both mu and sd of a plot or a site effect. plot was a little closer to converging so worked with that from there on out  
+- if we assume mu = 0 for the prior on plot effect, we can estimate an sd  
+- however, the plot effect itself is quite small and not distinguishable from 0 when modeled as an additive effect EXCEPT for the three sites w/ the highest counts
+- same is true when plot effect is modeled as a multiplicative effect (which I guess would mean the degree of autocorrelation varies by plot?)  
+- bottom line not sure the plots/sites are talking to each other much or that this helps us  
+- global bias term (b0) converges fine; median is 0.027   
+- cannot estimate an autocorrelation term (b1); however this could be because there are arbitrary distances between data points right now
+
+Next steps:
+- get regular time series for each plot to properly assess autocorrelation
+```{r}
 tick_model <- nimbleCode({
 
   # Priors
@@ -101,50 +92,45 @@ tick_model <- nimbleCode({
   #process error
   sd_proc ~ dgamma(0.01, 0.01)
   
-  #random effects (or fixed effects? I am not sure how you would code that up differently)
-  mu_plot ~ dnorm(0, 100)
-  mu_sp ~ dnorm(0, 100)
-  sd_plot ~ dgamma(0.01, 0.01)
-  sd_sp ~ dgamma(0.01, 0.01)
-  
-  for(l in 1:n_plots){
-    plot[l] ~ dnorm(mu_plot, sd = sd_plot)
-  }
-  
-  for(m in 1:n_spp){ 
-    sp[m] ~ dnorm(mu_sp, sd = sd_sp)
-  }
+  # #random effects (or fixed effects? I am not sure how you would code that up differently)
+  # sd_plot ~ dgamma(0.01, 0.01)
 
+  #process parameters
+  b1 ~ dnorm(0,100)
+  # bx ~ dnorm(0,100)
+  
+  #Loop through plots
+  for (j in 1:nplots){
+    
+    # #Plot effect
+    # plot.effect[j] ~ dnorm(0, sd = sd_plot)
+    # 
+    #Set initial condition for "first" observation
+      mu[j,1] ~ dunif(0.01,1)
+    
   #Loop through data points
-  for(i in 1:n){
+  for(i in 2:(time_length[j]+1)){
     
       # Process model
-      log(mu[i]) <- plot[plots[i]]*x[i] + sp[spp[i]]  
-      log(pred[i]) ~ dnorm(log(mu[i]), sd = sd_proc)
+      mu[j,i] <- b1*mu[j,i-1] #+ plot.effect[plots[j]]  #+ bx*x[j,i]
+      log(pred[j,i]) ~ dnorm(mu[j,i], sd = sd_proc)
       
       # Data model
-      y[i]  ~ dpois(pred[i])
-  }
+      y[j,i]  ~ dpois(pred[j,i])
+  }}
 
 })
 
-constants <- list(n = length(data1$Date),
-                  n_spp = length(unique(data1$Species)),
-                  n_plots = length(unique(data1$Plot)),
-                  spp = spp,
-                  plots = plots)
+constants <- list(time_length = time_length,
+                  nplots = nplots)
 
-data <- list(x = data1$Temp_C,
-             y = data1$Count )
+data <- list(y = y)
 
 nchain <- 3
 inits <- list()
 for(i in 1:nchain){
-  inits[[i]] <- list(mu_plot = rnorm(1, 1, 1),
-                     mu_sp = rnorm(1, 1, 1),
-                     sd_sp = rgamma(1, 1, 1),
-                     sd_plot = rgamma(1, 1, 1),
-                     sd_proc = rgamma(1, 1, 1))
+  inits[[i]] <- list(sd_proc = rgamma(1, 1, 1),
+                     b1 = rnorm(1, 1, 1))
 }
 
 #model$initializeInfo()
@@ -153,13 +139,15 @@ nimble.out <- nimbleMCMC(code = tick_model,
                            data = data,
                            inits = inits,
                            constants = constants,
-                           monitors = c("sd_sp","sd_plot","mu_plot","mu_sp","sd_proc"),
+                           monitors = c("sd_proc","b1"),
                            niter = 10000,
                            nchains = 3,
                            samplesAsCodaMCMC = TRUE)
 
 plot(nimble.out) #BOOM
 gelman.diag(nimble.out)  ## BOOM!! :-)
+summary(nimble.out)
+
 
 #Haven't gotten to this point yet
 burnin <- 2000                               
