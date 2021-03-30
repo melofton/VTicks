@@ -17,9 +17,9 @@ Breaking down the data
 ```{r}
 view(ticks)
 
-aa_ticks<- ticks%>% select(siteID, plotID, ambloyomma_americanum)
+aa_ticks<- ticks%>% select(ambloyomma_americanum, siteID, plotID)
 
-is_ticks<- ticks%>% select(siteID, plotID, ixodes_scapularis)
+is_ticks<- ticks%>% select(ixodes_scapularis, siteID, plotID)
 
 ```
 
@@ -31,9 +31,11 @@ str(aa_ticks)
 
 aa_ticks$siteID<- factor(aa_ticks$siteID)
 
+aa_ticks$plotID<- factor(aa_ticks$plotID)
+
 str(aa_ticks)
 
-mod1.lm<-lm(ambloyomma_americanum ~ plotID + siteID, data= aa_ticks)
+mod1.lm<-lm(ambloyomma_americanum ~ siteID*plotID, data= aa_ticks)
 
 mod1.av<-aov(mod1.lm)
 
@@ -43,9 +45,20 @@ tukey.test<-TukeyHSD(mod1.av)
 
 tukey.test
 
-plot(tukey.test)
-
 summary(tukey.test)
+
+res1<-residuals(mod1.av)
+
+shapiro.test(res1)
+
+summary.aov(mod1.av)
+
+qqnorm(res1)
+
+anova(mod1.av)
+
+summary(mod1.av)
+
 
 ```
 
@@ -58,9 +71,11 @@ str(is_ticks)
 
 is_ticks$siteID<- factor(is_ticks$siteID)
 
+is_ticks$plotID<- factor(is_ticks$plotID)
+
 str(is_ticks)
 
-mod1.lm<-lm(ixodes_scapularis ~ plotID + siteID, data= is_ticks)
+mod1.lm<-lm(ixodes_scapularis ~ siteID * plotID, data= is_ticks)
 
 mod1.av<-aov(mod1.lm)
 
@@ -74,6 +89,17 @@ plot(tukey.test)
 
 summary(tukey.test)
 
+res1<-residuals(mod1.av)
+
+shapiro.test(res1)
+
+summary.aov(mod1.av)
+
+qqnorm(res1)
+
+anova(mod1.av)
+
+summary(mod1.av)
 
 ```
 
