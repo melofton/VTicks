@@ -1,0 +1,168 @@
+---
+title: "Bayesian Tick Forecast Mar 30 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(nimble)
+library(rjags)
+library(lubridate)
+library(tidybayes)
+library(tidyverse)
+```
+
+## Section 1: Load and format data
+Data we are using include tick data targets from the EFI forecasting challenge, as well as climate data from PRISM (https://prism.oregonstate.edu/) as our only driver. In the section below we load in data, combine the two dataframes, omit NAs, and set up indeces for random effects
+```{r}
+ticks <- read_csv("../0_Data_files/ticks-targets.csv.gz")
+drivers <- read.csv("../0_Data_files/PRISM_data/combined_prism_drivers.csv")
+
+#NOTE: this does not include all tick data right now! Only days with driver data available
+data = drivers%>%
+  rename(time = Date,
+         siteID = Site)%>%
+  mutate(time = as.Date(time))%>%
+  left_join(ticks)
+
+#KEY CHANGE: limiting to only timepoints when we have observations - since we are not currently using state-space anyway, no need to include NA observations at this time, and it facilitates convergence
+full_data <- data %>%
+  filter(year(time) %in% c(2016:2018)) %>%
+  mutate(NewEpiWeek = epiweek(time)) %>%
+  filter(NewEpiWeek %in% c(09:49)) %>%
+  mutate(NewEpiWeek = sprintf("%02d", NewEpiWeek),
+         Year = year(time)) %>%
+  gather(ambloyomma_americanum:ixodes_scapularis, key = "Species", value = "Count") %>%
+  select(-Plot) %>%
+  rename(Site = siteID,
+         Date = time,
+         Plot = plotID,
+         Temp_C = tmean..degrees.C.,
+         Precip_mm = ppt..mm.) %>%
+  select(Site, Year, Date, Plot, Count, Species, Temp_C, Precip_mm) %>%
+  filter(!is.na(Count)) %>%
+  arrange(Date)
+```
+
+## Section 2: Set up model
+Right now we are using a simple model that relates tick measurements to temperature, with a random effect for plot
+```{r}
+tick_model <- nimbleCode({
+
+  # Priors
+  #process error
+  sd_proc ~ dgamma(0.01, 0.01)
+  
+  #random effects 
+  mu_plot ~ dnorm(0, 100)
+  #mu_site ~ dnorm(0, 100)
+  sd_plot ~ dgamma(0.01, 0.01)
+  #sd_site ~ dgamma(0.01, 0.01)
+  
+  for(l in 1:n_plots){
+    plot[l] ~ dnorm(mu_plot, sd = sd_plot)
+  }
+  
+  #for(l in 1:n_sites){
+  #  site[l] ~ dnorm(mu_site, sd = sd_site)
+  #}
+
+  #Loop through data points
+  for(i in 1:n){
+    
+      # Process model
+      log(mu[i]) <- plot[plots[i]]*x[i] #+ site[sites[i]]*x[i]
+      log(pred[i]) ~ dnorm(log(mu[i]), sd = sd_proc)
+      
+      # Data model
+      y[i]  ~ dpois(pred[i])
+  }
+
+})
+```
+
+## Section 3: Run model and plot results
+```{r}
+species_to_run = c("ambloyomma_americanum","ixodes_scapularis")
+
+for(species in species_to_run){
+  
+  data1<- full_data%>%
+    filter(Species == species)
+  
+  # Set up indices
+  yrs <- as.numeric(factor(data1$Year))
+  sites <- as.numeric(factor(data1$Site))
+  plots <- as.numeric(factor(data1$Plot))
+  
+  constants <- list(n = length(data1$Date),
+                    n_spp = length(unique(data1$Species)),
+                    n_plots = length(unique(data1$Plot)),
+                    #n_sites = length(unique(data1$Site)),
+                    #sites = sites,
+                    plots = plots)
+  
+  data <- list(x = data1$Temp_C,
+               y = data1$Count )
+  
+  nchain <- 3
+  inits <- list()
+  for(i in 1:nchain){
+    inits[[i]] <- list(mu_plot = rnorm(1, 1, 1),
+                       #mu_site = rnorm(1, 1, 1),
+                       sd_plot = rgamma(1, 1, 1),
+                       #sd_site = rgamma(1, 1, 1),
+                       sd_proc = rgamma(1, 1, 1))
+  }
+  
+  nimble.out <- nimbleMCMC(code = tick_model,
+                             data = data,
+                             inits = inits,
+                             constants = constants,
+                             monitors = c("sd_plot","mu_plot","sd_proc", "pred"), #"sd_site", "mu_site"
+                             niter = 10000,
+                             nchains = 3,
+                             samplesAsCodaMCMC = TRUE)
+  
+  plot(nimble.out[, c("sd_plot","mu_plot","sd_proc")]) #BOOM
+  gelman.diag(nimble.out[, c("sd_plot","mu_plot","sd_proc")])  ## BOOM!! :-)
+  
+  burnin <- 1000                               
+  nimble.burn <- window(nimble.out, start=burnin)
+  
+  plot(nimble.burn[, c("sd_plot","mu_plot","sd_proc")]) #
+  effectiveSize(nimble.burn[, c("sd_plot","mu_plot","sd_proc")])
+  gelman.diag(nimble.burn[, c("sd_plot","mu_plot","sd_proc")])  ## determine convergence
+  
+  data1$row <- as.numeric(row.names(data1))
+  
+  chain <- nimble.burn %>%
+    tidybayes::spread_draws(pred[row])%>%
+    group_by(row) %>% 
+    summarise(mean = mean(pred),
+              upper = quantile(pred, 0.975),
+              lower = quantile(pred, 0.025),.groups = "drop")
+  
+  to_plot = chain%>%
+    left_join(data1, by = "row")%>%
+    mutate(doy = yday(Date))
+  
+  sites <- unique(to_plot$Site)
+  for (i in 1:length(sites)){
+    current_site <- subset(to_plot, Site == sites[i])
+    if(nrow(current_site) > 0){
+      current_site = current_site%>%
+        ggplot(aes(x = doy, color = Plot, fill = Plot))+
+        geom_point(aes(y = Count), size = 2)+
+        geom_line(aes(y = mean))+
+        geom_ribbon(aes(ymin = lower, ymax = upper, color = Plot, fill = Plot), alpha = 0.2) +
+        ggtitle(paste0(species))+
+        facet_grid(vars(Year), scales = "free_x")+
+        theme_bw()
+      print(current_site)
+    }
+  }
+}
+
+
+```
