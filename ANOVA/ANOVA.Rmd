@@ -35,7 +35,7 @@ aa_ticks$plotID<- factor(aa_ticks$plotID)
 
 str(aa_ticks)
 
-mod1.lm<-lm(ambloyomma_americanum ~ siteID*plotID, data= aa_ticks)
+mod1.lm<-lm(ambloyomma_americanum ~ siteID/plotID, data= aa_ticks)
 
 mod1.av<-aov(mod1.lm)
 
